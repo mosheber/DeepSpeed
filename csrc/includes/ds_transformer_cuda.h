@@ -47,7 +47,8 @@ public:
                          bool attn_dropout_checkpoint,
                          bool normalize_invertible,
                          bool gelu_checkpoint,
-                         bool stochastic_mode);
+                         bool stochastic_mode,
+                         bool tfixup);
 
     virtual ~BertTransformerLayer();
 
@@ -177,4 +178,5 @@ private:
 
     // High Performace flags
     bool _stochastic_mode;
+    bool _tfixup;
 };

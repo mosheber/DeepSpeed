@@ -8,10 +8,14 @@ import torch
 from torch import nn
 from torch.autograd import Function
 
+
 # Cuda modules will be imported if needed
 transformer_cuda_module = None
 stochastic_transformer_cuda_module = None
 
+def apply_t_fixup_encoder(param,en_layers,is_v_weight=False):
+    param_scaler = 1 if not is_v_weight else 2**0.5
+    return (0.67 * (en_layers) ** (- 1. / 4.)) * (param * (param_scaler))
 
 class TransformerConfig():
     def __init__(self,
@@ -106,7 +110,8 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                  gelu_checkpoint=False,
                  adjust_init_range=True,
                  attn_dropout_checkpoint=False,
-                 stochastic_mode=False):
+                 stochastic_mode=False,
+                 tfixup = False):
         super(DeepSpeedTransformerConfig,
               self).__init__(
                   batch_size,
@@ -119,7 +124,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
                   num_hidden_layers,
                   initializer_range)
         self.fp16 = fp16
-        self.pre_layer_norm = pre_layer_norm
+        self.pre_layer_norm = pre_layer_norm if not tfixup else False # if tfixup, then pre_layer_norm = False!
         self.local_rank = local_rank
         self.seed = seed
         self.normalize_invertible = normalize_invertible
@@ -130,6 +135,7 @@ class DeepSpeedTransformerConfig(TransformerConfig):
         self.is_grad_enabled = True
         self.attn_dropout_checkpoint = attn_dropout_checkpoint
         self.stochastic_mode = stochastic_mode
+        self.tfixup = tfixup
 
     @classmethod
     def from_dict(cls, json_object):
@@ -515,7 +521,8 @@ class DeepSpeedTransformerLayer(nn.Module):
                           self.config.attn_dropout_checkpoint,
                           self.config.normalize_invertible,
                           self.config.gelu_checkpoint,
-                          self.config.stochastic_mode)
+                          self.config.stochastic_mode,
+                          self.config.tfixup)
 
     def init_transformer_weights(self, adjust_init_range=False):
         num_layers = self.config.num_hidden_layers
@@ -536,6 +543,15 @@ class DeepSpeedTransformerLayer(nn.Module):
         self.output_b.data.zero_()
         self.norm_w.data.fill_(1.0)
         self.norm_b.data.zero_()
+        
+        if(self.config.tfixup):
+            hidden = self.config.hidden_size
+            self.attn_qkvw[hidden*2:,:] == apply_t_fixup_encoder(self.attn_qkvw_clone[hidden*2:,:],num_layers,is_v_weight=True)
+            self.attn_qkvb[hidden*2:] = apply_t_fixup_encoder(self.attn_qkvb[hidden*2:],num_layers,is_v_weight=True)
+            self.inter_w = apply_t_fixup_encoder(self.inter_w,num_layers)
+            self.inter_b = apply_t_fixup_encoder(self.inter_b,num_layers)
+            self.output_w = apply_t_fixup_encoder(self.output_w,num_layers)
+            self.output_b = apply_t_fixup_encoder(self.output_b,num_layers)
 
     def forward(self, input, input_mask, grads=None):
         self.config.training = self.training
