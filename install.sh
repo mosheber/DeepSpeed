@@ -111,14 +111,14 @@ case $key in
 esac
 done
 
-user=`whoami`
-if [ "$allow_sudo" == "0" ]; then
-    if [ "$user" == "root" ]; then
-        echo "WARNING: running as root, if you want to install DeepSpeed with sudo please use -s/--pip_sudo instead"
-        usage
-        exit 1
-    fi
-fi
+# user=`whoami`
+# if [ "$allow_sudo" == "0" ]; then
+#     if [ "$user" == "root" ]; then
+#         echo "WARNING: running as root, if you want to install DeepSpeed with sudo please use -s/--pip_sudo instead"
+#         usage
+#         exit 1
+#     fi
+# fi
 
 if [ "$ds_only" == "1" ] && [ "$tp_only" == "1" ]; then
     echo "-d and -t are mutually exclusive, only choose one or none"
